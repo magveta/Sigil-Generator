@@ -524,6 +524,7 @@ input[type="color"]::-webkit-color-swatch {
     width: 600px;
     height: 600px;
     max-width: 100%;
+    aspect-ratio: 1 / 1;
 }
 
 /* ===== Responsive ===== */
@@ -548,6 +549,7 @@ input[type="color"]::-webkit-color-swatch {
 
     #sigilCanvas {
         width: 100%;
+        height: auto;
     }
 
     header h1 {
