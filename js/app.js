@@ -115,6 +115,14 @@
         document.body.removeChild(a);
     }
 
+    // --- Keep canvas square on all screen sizes ---
+    function enforceSquareCanvas() {
+        const w = canvas.clientWidth;
+        if (w) canvas.style.height = w + 'px';
+    }
+    enforceSquareCanvas();
+    window.addEventListener('resize', enforceSquareCanvas);
+
     // --- Draw empty canvas on load (no sigil yet) ---
     sigil.drawEmpty();
 })();

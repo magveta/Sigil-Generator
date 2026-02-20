@@ -523,8 +523,6 @@ input[type="color"]::-webkit-color-swatch {
     border-radius: 6px;
     width: 600px;
     max-width: 100%;
-    aspect-ratio: 1 / 1;
-    height: auto;
 }
 
 /* ===== Responsive ===== */
