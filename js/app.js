@@ -59,6 +59,15 @@
         sigilColorHex.textContent = sigilColorInput.value;
     });
 
+    // --- Complexity slider ---
+    const complexityInput = document.getElementById('complexity');
+    const complexityValue = document.getElementById('complexityValue');
+
+    complexityInput.addEventListener('input', () => {
+        sigil.complexity = parseInt(complexityInput.value, 10);
+        complexityValue.textContent = complexityInput.value;
+    });
+
     // --- Generate button ---
     const exportPngBtn = document.getElementById('exportPng');
     const exportSvgBtn = document.getElementById('exportSvg');

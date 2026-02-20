@@ -42,6 +42,7 @@ class SigilGenerator {
         this.shape      = 'circle';
         this.bgColor    = '#000000';
         this.sigilColor = '#ff0000';
+        this.complexity  = 3;          // 1-5 scale
 
         // Randomised state stored so we can redraw / export identically
         this.dotPosition    = null;   // kept for backward compat (single dot)
@@ -114,7 +115,7 @@ class SigilGenerator {
         const savedCtx = this.ctx;
         this.canvas = tmp;
         this.ctx = tmp.getContext('2d');
-        this._drawInnerLayers(size, 0);
+        this._drawInnerLayers(size, 0, true);
         const innerDataUrl = tmp.toDataURL('image/png');
         this.canvas = savedCanvas;
         this.ctx = savedCtx;
@@ -136,23 +137,43 @@ class SigilGenerator {
     ==================================================== */
 
     _buildLayerState() {
-        // Pick 2-3 random layers
-        const count = 2 + Math.floor(Math.random() * 2); // 2 or 3
-        const shuffled = [...SigilGenerator.LAYERS].sort(() => Math.random() - 0.5);
-        const chosen = shuffled.slice(0, count);
+        const c = this.complexity; // 1-5
+
+        // Layer count scales with complexity (always at least 2 so sigils never look empty):
+        //   1→2  2→2-3  3→2-3  4→3-4  5→3-5
+        const minLayers = c <= 3 ? 2 : 3;
+        const maxLayers = Math.min(SigilGenerator.LAYERS.length, [2, 3, 3, 4, 5][c - 1]);
+        const count = minLayers + Math.floor(Math.random() * (maxLayers - minLayers + 1));
+
+        // Weighted selection — connectedNodes gets 3× weight
+        const pool = [];
+        for (const layer of SigilGenerator.LAYERS) {
+            const weight = layer === 'connectedNodes' ? 3 : 1;
+            for (let i = 0; i < weight; i++) pool.push(layer);
+        }
+        // Shuffle the weighted pool, then pick unique layers
+        const shuffled = pool.sort(() => Math.random() - 0.5);
+        const chosen = [];
+        for (const l of shuffled) {
+            if (!chosen.includes(l)) chosen.push(l);
+            if (chosen.length >= count) break;
+        }
 
         const state = { layers: chosen };
 
         // Generate random params for every chosen layer
+        // Density multiplier: complexity 1→0.6, 3→1.0, 5→1.5
+        const density = 0.6 + (c - 1) * 0.225;
+
         if (chosen.includes('radialLines')) {
-            const n = 2 + Math.floor(Math.random() * 4); // 2-5 lines
+            const n = Math.max(2, Math.round((2 + Math.floor(Math.random() * 4)) * density)); // scaled 2-5→1-8
             const angles = [];
             for (let i = 0; i < n; i++) angles.push(Math.random() * Math.PI * 2);
             state.radialLines = { angles };
         }
 
         if (chosen.includes('perimeterConnections')) {
-            const n = 3 + Math.floor(Math.random() * 3); // 3-5 points
+            const n = Math.max(3, Math.round((3 + Math.floor(Math.random() * 3)) * density)); // scaled 3-5
             const tValues = []; // normalised 0-1 positions along perimeter
             for (let i = 0; i < n; i++) tValues.push(Math.random());
             tValues.sort((a, b) => a - b);
@@ -163,7 +184,7 @@ class SigilGenerator {
         }
 
         if (chosen.includes('concentricShapes')) {
-            const n = 1 + Math.floor(Math.random() * 3); // 1-3 inner shapes
+            const n = Math.max(1, Math.round((1 + Math.floor(Math.random() * 3)) * density)); // scaled 1-3
             const rings = [];
             for (let i = 0; i < n; i++) {
                 // 50% chance: same as outer shape, 50% chance: random different shape
@@ -184,7 +205,7 @@ class SigilGenerator {
         }
 
         if (chosen.includes('scatterDots')) {
-            const n = 2 + Math.floor(Math.random() * 4); // 2-5 dots
+            const n = Math.max(2, Math.round((2 + Math.floor(Math.random() * 4)) * density)); // scaled 2-5
             const dots = [];
             const minDist = 0.15; // minimum normalised distance between dots
             const centerAvoid = 0.12; // avoid this radius around center (normalised)
@@ -209,7 +230,7 @@ class SigilGenerator {
         }
 
         if (chosen.includes('crossLines')) {
-            const n = 1 + Math.floor(Math.random() * 3); // 1-3 lines
+            const n = Math.max(1, Math.round((1 + Math.floor(Math.random() * 3)) * density)); // scaled 1-3
             const lines = [];
             for (let i = 0; i < n; i++) {
                 lines.push({
@@ -221,7 +242,7 @@ class SigilGenerator {
         }
 
         if (chosen.includes('connectedNodes')) {
-            const n = 2 + Math.floor(Math.random() * 4); // 2-5 nodes
+            const n = Math.max(2, Math.round((2 + Math.floor(Math.random() * 4)) * density)); // scaled 2-5
             const nodes = [];
             const minDist = 0.18;
             for (let i = 0; i < n; i++) {
@@ -273,7 +294,7 @@ class SigilGenerator {
         }
 
         // Inner layers (drawn BEFORE outer shape so shape sits on top)
-        this._drawInnerLayers(size, glowIntensity);
+        this._drawInnerLayers(size, glowIntensity, transparent);
 
         // Outer shape
         ctx.strokeStyle = this.sigilColor;
@@ -303,7 +324,7 @@ class SigilGenerator {
 
     /* ---------- Inner pattern layer renderers ---------- */
 
-    _drawInnerLayers(size, glowIntensity) {
+    _drawInnerLayers(size, glowIntensity, transparent = false) {
         if (!this._layerState) return;
         const ctx = this.ctx;
         const ls  = this._layerState;
@@ -475,11 +496,22 @@ class SigilGenerator {
 
                     // Draw hollow dots (stroke only, clear inside)
                     for (const p of pts) {
-                        // Clear the inside by filling with background
-                        ctx.fillStyle = this.bgColor;
-                        ctx.beginPath();
-                        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-                        ctx.fill();
+                        if (transparent) {
+                            // Truly erase the interior so it stays transparent
+                            ctx.save();
+                            ctx.globalCompositeOperation = 'destination-out';
+                            ctx.fillStyle = 'rgba(0,0,0,1)';
+                            ctx.beginPath();
+                            ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.restore();
+                        } else {
+                            // Fill with background color to mask lines behind
+                            ctx.fillStyle = this.bgColor;
+                            ctx.beginPath();
+                            ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
                         // Stroke the ring
                         ctx.strokeStyle = this.sigilColor;
                         ctx.lineWidth = thinLine;
